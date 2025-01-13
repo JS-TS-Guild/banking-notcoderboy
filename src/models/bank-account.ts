@@ -1,40 +1,45 @@
-import GlobalRegistry from "@/services/GlobalRegistry";
-import { generateUUID } from "@/services/Utils";
+import GlobalRegistry from '@/services/GlobalRegistry';
+import { BankId, BankAccountId } from '@/types/Common';
 
 export default class BankAccount {
-  id: string;
-  balance: number;
-  bankId: string;
+  private id: BankAccountId;
+  private balance: number;
+  private bankId: BankId;
+  private isNegativeAllowed: boolean;
 
-  constructor(bankId: string, balance: number = 0) {
-    this.id = generateUUID();
-    this.balance = balance;
+  constructor(bankId: BankId, initialBalance: number = 0, isNegativeAllowed: boolean = false) {
+    this.id = crypto.randomUUID();
+    this.balance = initialBalance;
     this.bankId = bankId;
-
+    this.isNegativeAllowed = isNegativeAllowed;
     GlobalRegistry.addBankAccount(this);
   }
 
-  getId(): string {
+  getId(): BankAccountId {
     return this.id;
+  }
+
+  getBankId(): BankId {
+    return this.bankId;
   }
 
   getBalance(): number {
     return this.balance;
   }
 
-  getBankId(): string {
-    return this.bankId;
-  }
-  
-  withdraw(amount: number): void {
-    this.balance -= amount;
+  canWithdraw(amount: number): boolean {
+    return this.isNegativeAllowed || this.balance >= amount;
   }
 
-  checkValidWithdrawal(amount: number): boolean {
-    return this.balance >= amount;
+  withdraw(amount: number): void {
+    if (!this.canWithdraw(amount)) {
+      throw new Error('Insufficient funds');
+    }
+    this.balance -= amount;
   }
 
   deposit(amount: number): void {
     this.balance += amount;
   }
 }
+

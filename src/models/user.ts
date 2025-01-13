@@ -1,18 +1,16 @@
-import GlobalRegistry from "@/services/GlobalRegistry";
-import { generateUUID } from "@/services/Utils";
 
-type BankAccountId = string;
+import GlobalRegistry from '@/services/GlobalRegistry';
+import { UserId, BankAccountId } from '@/types/Common';
 
 export default class User {
-  private id: string;
+  private id: UserId;
   private name: string;
   private accountIds: BankAccountId[];
 
-  constructor(name: string, accountIds: BankAccountId[]) {
-    this.id = generateUUID();
+  private constructor(name: string, accountIds: BankAccountId[]) {
+    this.id = crypto.randomUUID();
     this.name = name;
     this.accountIds = accountIds;
-
     GlobalRegistry.addUser(this);
   }
 
@@ -20,11 +18,15 @@ export default class User {
     return new User(name, accountIds);
   }
 
-  getId(): string {
+  getId(): UserId {
     return this.id;
   }
 
+  getName(): string {
+    return this.name;
+  }
+
   getAccountIds(): BankAccountId[] {
-    return this.accountIds;
+    return [...this.accountIds];
   }
 }

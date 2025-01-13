@@ -1,125 +1,70 @@
-import { UserId } from "@/types/Common";
-import BankAccount from "@/models/bank-account";
-import GlobalRegistry from "@/services/GlobalRegistry";
-import { generateUUID } from "@/services/Utils";
-
-interface BankConfig {
-  isNegativeAllowed: boolean;
-}
+import BankAccount from './bank-account';
+import GlobalRegistry from '@/services/GlobalRegistry';
+import { BankId, UserId, BankAccountId } from '@/types/Common';
 
 export default class Bank {
-  private id: string;
-  private accounts: BankAccount[] = [];
+  private id: BankId;
   private isNegativeAllowed: boolean;
 
-  constructor(isNegativeAllowed: boolean = false) {
-    this.id = generateUUID();
-    this.isNegativeAllowed = isNegativeAllowed;
-
+  private constructor(options?: { isNegativeAllowed?: boolean }) {
+    this.id = crypto.randomUUID();
+    this.isNegativeAllowed = options?.isNegativeAllowed ?? false;
     GlobalRegistry.addBank(this);
   }
 
-  static create(config: BankConfig): Bank;
-  static create(config?: { isNegativeAllowed?: boolean }): Bank;
-
-  static create(config?: { isNegativeAllowed?: boolean }): Bank {
-    const isNegativeAllowed = config?.isNegativeAllowed ?? false;
-    return new Bank(isNegativeAllowed);
+  static create(options?: { isNegativeAllowed?: boolean }): Bank {
+    return new Bank(options);
   }
 
-  getId(): string {
+  getId(): BankId {
     return this.id;
   }
 
-  createAccount(balance: number): BankAccount {
-    const account = new BankAccount(this.id, balance);
-    this.accounts.push(account);
+  createAccount(initialBalance: number = 0): BankAccount {
+    const account = new BankAccount(this.id, initialBalance, this.isNegativeAllowed);
+    GlobalRegistry.addBankAccount(account);
     return account;
   }
 
-  send(
-    senderUserId: UserId,
-    recipientUserId: UserId,
-    amount: number,
-    recipientBankId?: string
-  ): void {
-    const sender = GlobalRegistry.getUser(senderUserId);
-    const recipient = GlobalRegistry.getUser(recipientUserId);
-  
-    if (!sender || !recipient) throw new Error("User not found");
-  
-    if(recipientBankId) {
-      const senderAccounts = sender.getAccountIds()
-      .map((id) => GlobalRegistry.getBankAccount(id)).
-      filter((account) => account.getBankId() === this.id);
-      const recipientAccounts = recipient.getAccountIds()
-      .map((id) => GlobalRegistry.getBankAccount(id)).
-      filter((account) => account.getBankId() === recipientBankId);
-  
-      if (!senderAccounts.length) throw new Error("Sender has no accounts in this bank");
-      if (!recipientAccounts.length) throw new Error("Recipient has no accounts in the recipient's bank");
-  
-      let remainingAmount = amount;
-  
-      if(this.isNegativeAllowed) {
-        senderAccounts[0].withdraw(amount);
-        remainingAmount -= amount;
-        recipientAccounts[0].deposit(amount);
-        return;
-      }
-
-      else {
-        const allBalance = senderAccounts.reduce((total, account) => total + account.getBalance(), 0);
-        if(allBalance < amount) throw new Error("Insufficient funds");
-        for (const account of senderAccounts) {
-          if (account.checkValidWithdrawal(remainingAmount)) {
-            account.withdraw(remainingAmount);
-            recipientAccounts[0].deposit(remainingAmount);
-            return;
-          } else {
-            remainingAmount -= account.getBalance();
-          }
-        }
-      }
+  getAccount(accountId: BankAccountId): BankAccount {
+    const account = GlobalRegistry.getBankAccount(accountId);
+    if (!account || account.getBankId() !== this.id) {
+      throw new Error('Account not found');
     }
-  
-    else {
-      const senderAccounts = sender.getAccountIds()
-      .map((id) => GlobalRegistry.getBankAccount(id)).
-      filter((account) => account.getBankId() === this.id);
-      const recipientAccounts = recipient.getAccountIds()
-      .map((id) => GlobalRegistry.getBankAccount(id)).
-      filter((account) => account.getBankId() === this.id);
-  
-      if (!senderAccounts.length) throw new Error("Sender has no accounts in this bank");
-      if (!recipientAccounts.length) throw new Error("Recipient has no accounts in this bank");
-  
-      let remainingAmount = amount;
-  
-      if(this.isNegativeAllowed) {
-        senderAccounts[0].withdraw(amount);
-        remainingAmount -= amount;
-        recipientAccounts[0].deposit(amount);
-        return;
-      }
-
-      else {
-        const allBalance = senderAccounts.reduce((total, account) => total + account.getBalance(), 0);
-        if(allBalance < amount) throw new Error("Insufficient funds");
-        for (const account of senderAccounts) {
-          if (account.checkValidWithdrawal(remainingAmount)) {
-            account.withdraw(remainingAmount);
-            recipientAccounts[0].deposit(remainingAmount);
-            return;
-          } else {
-            remainingAmount -= account.getBalance();
-          }
-        }
-      }
-    }
+    return account;
   }
 
-  getAccount(id: string): BankAccount {
-    return this.accounts.find((account) => account.getId() === id);
-  }
-}
+  send(fromUserId: UserId, toUserId: UserId, amount: number, toBankId?: BankId): void {
+    const fromUser = GlobalRegistry.getUser(fromUserId);
+    const toUser = GlobalRegistry.getUser(toUserId);
+    
+    if (!fromUser || !toUser) {
+      throw new Error('User not found');
+    }
+
+    // If toBankId is not provided, assume it's an internal transfer
+    const targetBankId = toBankId || this.id;
+    
+    // Get all accounts for the sender in this bank
+    const fromAccounts = fromUser.getAccountIds()
+      .map(id => GlobalRegistry.getBankAccount(id))
+      .filter(account => account && account.getBankId() === this.id);
+
+    // Find the first account that can cover the transfer
+    const fromAccount = fromAccounts.find(account => account.canWithdraw(amount));
+    if (!fromAccount) {
+      throw new Error('Insufficient funds');
+    }
+
+    // Get recipient's account in the target bank
+    const toAccount = toUser.getAccountIds()
+      .map(id => GlobalRegistry.getBankAccount(id))
+      .find(account => account && account.getBankId() === targetBankId);
+
+    if (!toAccount) {
+      throw new Error('Recipient account not found in target bank');
+    }
+
+    fromAccount.withdraw(amount);
+    toAccount.deposit(amount);
+  }}
