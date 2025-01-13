@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    "moduleResolution": "node",
+    "target": "ESNext",
     "baseUrl": "src", // Set the base URL to the src directory
     "paths": {
       "@/*": ["*"] // Optional: Map '@/' to the src directory
