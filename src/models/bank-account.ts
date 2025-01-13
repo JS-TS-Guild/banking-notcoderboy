@@ -1,5 +1,5 @@
-import GlobalRegistry from '@/services/GlobalRegistry';
-import { BankId, BankAccountId } from '@/types/Common';
+import GlobalRegistry from "@/services/GlobalRegistry";
+import { BankAccountId, BankId } from "@/types/Common";
 
 export default class BankAccount {
   private id: BankAccountId;
@@ -42,4 +42,3 @@ export default class BankAccount {
     this.balance += amount;
   }
 }
-

@@ -1,6 +1,7 @@
-import BankAccount from './bank-account';
-import GlobalRegistry from '@/services/GlobalRegistry';
-import { BankId, UserId, BankAccountId } from '@/types/Common';
+import GlobalRegistry from "../services/GlobalRegistry";
+import User from "./user";
+import BankAccount from "./bank-account";
+import { BankAccountId, UserId, BankId } from "@/types/Common";
 
 export default class Bank {
   private id: BankId;
@@ -34,6 +35,21 @@ export default class Bank {
     return account;
   }
 
+  private findSuitableAccount(user: User, amount: number): BankAccount | null {
+    // Get all accounts for this bank in priority order
+    const accountIds = user.getAccountIdsForBank(this.id);
+    
+    // Try each account in priority order until we find one with sufficient funds
+    for (const accountId of accountIds) {
+      const account = this.getAccount(accountId);
+      if (account.canWithdraw(amount)) {
+        return account;
+      }
+    }
+    
+    return null;
+  }
+
   send(fromUserId: UserId, toUserId: UserId, amount: number, toBankId?: BankId): void {
     const fromUser = GlobalRegistry.getUser(fromUserId);
     const toUser = GlobalRegistry.getUser(toUserId);
@@ -42,29 +58,24 @@ export default class Bank {
       throw new Error('User not found');
     }
 
-    // If toBankId is not provided, assume it's an internal transfer
+    // If toBankId is not specified, assume it's an internal transfer
     const targetBankId = toBankId || this.id;
-    
-    // Get all accounts for the sender in this bank
-    const fromAccounts = fromUser.getAccountIds()
-      .map(id => GlobalRegistry.getBankAccount(id))
-      .filter(account => account && account.getBankId() === this.id);
 
-    // Find the first account that can cover the transfer
-    const fromAccount = fromAccounts.find(account => account.canWithdraw(amount));
+    // Find suitable source account based on priority
+    const fromAccount = this.findSuitableAccount(fromUser, amount);
     if (!fromAccount) {
-      throw new Error('Insufficient funds');
+      throw new Error('Insufficient funds in all accounts');
     }
 
-    // Get recipient's account in the target bank
-    const toAccount = toUser.getAccountIds()
-      .map(id => GlobalRegistry.getBankAccount(id))
-      .find(account => account && account.getBankId() === targetBankId);
+    // Find first available account in target bank
+    const toAccountId = toUser.getAccountIdsForBank(targetBankId)[0];
+    const toAccount = toAccountId ? GlobalRegistry.getBankAccount(toAccountId) : null;
 
     if (!toAccount) {
-      throw new Error('Recipient account not found in target bank');
+      throw new Error('Recipient has no account in target bank');
     }
 
     fromAccount.withdraw(amount);
     toAccount.deposit(amount);
-  }}
+  }
+}
